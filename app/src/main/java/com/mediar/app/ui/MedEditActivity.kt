@@ -39,6 +39,7 @@ class MedEditActivity : AppCompatActivity() {
     private val times = mutableListOf<String>()
     private var writeDialog: AlertDialog? = null
     private var writeMode = false
+    @Volatile private var writing = false
 
     private lateinit var timesText: TextView
     private lateinit var typeSpinner: Spinner
@@ -118,7 +119,7 @@ class MedEditActivity : AppCompatActivity() {
     /** مسیر دوم دریافت تگ: Foreground Dispatch (برای گوشی‌هایی که ReaderMode را با دیالوگ باز تحویل نمی‌دهند) */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (writeMode) {
+        if (writeMode && !writing) {
             val tag = NfcUtil.tagFromIntent(intent)
             if (tag != null) handleWriteTag(tag)
         }
@@ -281,7 +282,7 @@ class MedEditActivity : AppCompatActivity() {
         // مسیر ۱: ReaderMode
         adapter.enableReaderMode(
             this,
-            { tag -> handleWriteTag(tag) },
+            { tag -> if (writeMode && !writing) handleWriteTag(tag) },
             NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or
                 NfcAdapter.FLAG_READER_NFC_F or NfcAdapter.FLAG_READER_NFC_V,
             Bundle().apply { putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 250) }
@@ -302,13 +303,21 @@ class MedEditActivity : AppCompatActivity() {
     }
 
     private fun handleWriteTag(tag: Tag) {
+        synchronized(this) {
+            if (!writeMode || writing) return
+            writing = true
+        }
         Thread {
             val err = NfcUtil.writeTag(tag, med.id)
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (err == null) {
                     vibrate()
-                    stopWriteMode()
+                    // نوشتن تمام شد؛ گیرنده‌ها تا خروج از صفحه فعال ولی غیرمسلح می‌مانند
+                    // تا دیدن دوباره همان تگ، نوشتن دوم یا باز شدن صفحه اسکن را رقم نزند
+                    writeMode = false
+                    writeDialog?.dismiss()
+                    writeDialog = null
                     AlertDialog.Builder(this)
                         .setTitle("\u2705 انجام شد")
                         .setMessage("تگ به «" + med.name + "» وصل شد.\nحالا تگ را روی جعبه همین دارو بچسبان.")
@@ -316,6 +325,7 @@ class MedEditActivity : AppCompatActivity() {
                         .show()
                 } else {
                     // دیالوگ باز می‌ماند و دوباره گوش می‌دهیم
+                    writing = false
                     writeDialog?.setMessage(
                         "\u274c نشد: " + err + "\n" +
                             "تگ را دوباره به پشت گوشی بچسبان و چند ثانیه ثابت نگه دار…"
@@ -327,6 +337,7 @@ class MedEditActivity : AppCompatActivity() {
 
     private fun stopWriteMode() {
         writeMode = false
+        writing = false
         val adapter = NfcAdapter.getDefaultAdapter(this)
         try { adapter?.disableReaderMode(this) } catch (_: Exception) {}
         try { adapter?.disableForegroundDispatch(this) } catch (_: Exception) {}

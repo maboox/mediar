@@ -1,7 +1,6 @@
 package com.mediar.app.ui
 
 import android.graphics.Color
-import android.nfc.NfcAdapter
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -19,7 +18,6 @@ import com.mediar.app.logic.Fmt
 import com.mediar.app.logic.ScanEngine
 import com.mediar.app.logic.ScanOutcome
 import com.mediar.app.nfc.NfcUtil
-import com.mediar.app.nfc.ScanGate
 import java.time.ZonedDateTime
 
 /** نتیجه اسکن تگ — صفحه بزرگ و ساده + پخش صدای ضبط‌شده */
@@ -40,41 +38,13 @@ class ScanActivity : AppCompatActivity() {
             finish()
             return
         }
-        handleId(id)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // تا وقتی این صفحه باز است، خودمان تگ را می‌خوانیم تا سیستم
-        // با دیدن دوباره همان تگ، اپ را از نو باز نکند و صدا قطع نشود.
-        NfcAdapter.getDefaultAdapter(this)?.enableReaderMode(
-            this,
-            { tag ->
-                val id = NfcUtil.readIdFromTag(tag)
-                if (id != null && ScanGate.shouldHandle(id)) {
-                    runOnUiThread { if (!isFinishing) handleId(id) }
-                }
-            },
-            NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or
-                NfcAdapter.FLAG_READER_NFC_F or NfcAdapter.FLAG_READER_NFC_V or
-                NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS,
-            Bundle().apply { putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 500) }
-        )
-    }
-
-    override fun onPause() {
-        super.onPause()
-        NfcAdapter.getDefaultAdapter(this)?.disableReaderMode(this)
+        if (id == NfcUtil.REPORT_ID) showReport() else handleMed(id)
     }
 
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacksAndMessages(null)
         AudioStore.stopAll()
-    }
-
-    private fun handleId(id: String) {
-        if (id == NfcUtil.REPORT_ID) showReport() else handleMed(id)
     }
 
     private fun handleMed(id: String) {

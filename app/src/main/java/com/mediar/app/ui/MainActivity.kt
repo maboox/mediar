@@ -19,7 +19,6 @@ import com.mediar.app.logic.Fmt
 import com.mediar.app.logic.ScanEngine
 import com.mediar.app.logic.Schedule
 import com.mediar.app.nfc.NfcUtil
-import com.mediar.app.nfc.ScanGate
 import java.time.ZonedDateTime
 
 /** صفحه اصلی — مخصوص مادر: لیست بزرگ و ساده امروز */
@@ -57,7 +56,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openScan(id: String) {
-        if (!ScanGate.shouldHandle(id)) return
         startActivity(Intent(this, ScanActivity::class.java).putExtra(ScanActivity.EXTRA_ID, id))
     }
 
@@ -74,7 +72,7 @@ class MainActivity : AppCompatActivity() {
             },
             NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or
                 NfcAdapter.FLAG_READER_NFC_F or NfcAdapter.FLAG_READER_NFC_V,
-            Bundle().apply { putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 500) }
+            null
         )
     }
 

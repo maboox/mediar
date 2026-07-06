@@ -86,7 +86,12 @@ object NfcUtil {
                         return "ظرفیت این تگ کم است"
                     }
                     ndef.writeNdefMessage(msg)
-                    return null // موفق
+                    // خواندن دوباره برای اطمینان از اینکه واقعا روی تگ نوشته شد
+                    val back = try { ndef.ndefMessage } catch (_: Exception) { null }
+                    if (back != null && idFromMessage(back) == id) {
+                        return null // موفق و تایید شد
+                    }
+                    lastError = "نوشته شد ولی تایید خواندن ناموفق بود"
                 } catch (e: Exception) {
                     lastError = e.message ?: e.javaClass.simpleName
                 } finally {

@@ -42,6 +42,7 @@ class AdminActivity : AppCompatActivity() {
     private lateinit var audioContainer: LinearLayout
     private var writeDialog: AlertDialog? = null
     private var writeMode = false
+    @Volatile private var writing = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -104,7 +105,7 @@ class AdminActivity : AppCompatActivity() {
     /** مسیر دوم دریافت تگ در حالت نوشتن (Foreground Dispatch) */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (writeMode) {
+        if (writeMode && !writing) {
             val tag = NfcUtil.tagFromIntent(intent)
             if (tag != null) handleWriteTag(tag)
         }
@@ -217,7 +218,7 @@ class AdminActivity : AppCompatActivity() {
         // مسیر ۱: ReaderMode
         adapter.enableReaderMode(
             this,
-            { tag -> handleWriteTag(tag) },
+            { tag -> if (writeMode && !writing) handleWriteTag(tag) },
             NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or
                 NfcAdapter.FLAG_READER_NFC_F or NfcAdapter.FLAG_READER_NFC_V,
             Bundle().apply { putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 250) }
@@ -238,19 +239,28 @@ class AdminActivity : AppCompatActivity() {
     }
 
     private fun handleWriteTag(tag: Tag) {
+        synchronized(this) {
+            if (!writeMode || writing) return
+            writing = true
+        }
         Thread {
             val err = NfcUtil.writeTag(tag, NfcUtil.REPORT_ID)
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (err == null) {
                     vibrate()
-                    stopWriteMode()
+                    // نوشتن تمام شد؛ گیرنده‌ها تا خروج از صفحه فعال ولی غیرمسلح می‌مانند
+                    // تا دیدن دوباره همان تگ، نوشتن دوم یا باز شدن صفحه اسکن را رقم نزند
+                    writeMode = false
+                    writeDialog?.dismiss()
+                    writeDialog = null
                     AlertDialog.Builder(this)
                         .setTitle("\u2705 انجام شد")
                         .setMessage("تگ گزارش روزانه نوشته شد.\nآن را جایی مثل یخچال بچسبان.")
                         .setPositiveButton("باشه", null)
                         .show()
                 } else {
+                    writing = false
                     writeDialog?.setMessage(
                         "\u274c نشد: " + err + "\n" +
                             "تگ را دوباره به پشت گوشی بچسبان و چند ثانیه ثابت نگه دار…"
@@ -262,6 +272,7 @@ class AdminActivity : AppCompatActivity() {
 
     private fun stopWriteMode() {
         writeMode = false
+        writing = false
         val adapter = NfcAdapter.getDefaultAdapter(this)
         try { adapter?.disableReaderMode(this) } catch (_: Exception) {}
         try { adapter?.disableForegroundDispatch(this) } catch (_: Exception) {}
