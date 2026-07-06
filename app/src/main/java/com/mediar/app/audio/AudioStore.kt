@@ -1,6 +1,7 @@
 package com.mediar.app.audio
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import java.io.File
@@ -40,6 +41,10 @@ object AudioStore {
 
     fun has(ctx: Context, medId: String?, type: String): Boolean = file(ctx, medId, type).exists()
 
+    /** آیا برای این دارو (یا به‌صورت عمومی) پیامی از این نوع وجود دارد؟ */
+    fun hasAny(ctx: Context, medId: String?, type: String): Boolean =
+        (medId != null && has(ctx, medId, type)) || has(ctx, null, type)
+
     fun isRecording(): Boolean = recorder != null
 
     fun startRecording(ctx: Context, medId: String?, type: String): Boolean {
@@ -70,18 +75,46 @@ object AudioStore {
     }
 
     /**
-     * پخش پیام. اول پیام اختصاصی دارو، بعد پیام عمومی.
-     * خروجی false یعنی هیچ فایلی وجود نداشت (UI باید متن را بزرگ نشان دهد).
+     * پخش پیام (داخل اپ). اول پیام اختصاصی دارو، بعد پیام عمومی.
+     * خروجی false یعنی هیچ فایلی وجود نداشت.
      */
-    fun play(ctx: Context, medId: String?, type: String, onDone: (() -> Unit)? = null): Boolean {
+    fun play(ctx: Context, medId: String?, type: String, onDone: (() -> Unit)? = null): Boolean =
+        playInternal(ctx, medId, type, asAlarm = false, onDone = onDone)
+
+    /**
+     * پخش با بلندگوی آلارم (برای زمان یادآوری) — حتی اگر گوشی سایلنت باشد،
+     * روی کانال صدای آلارم پخش می‌شود.
+     */
+    fun playAlarm(ctx: Context, medId: String?, type: String, onDone: (() -> Unit)? = null): Boolean =
+        playInternal(ctx, medId, type, asAlarm = true, onDone = onDone)
+
+    private fun playInternal(
+        ctx: Context,
+        medId: String?,
+        type: String,
+        asAlarm: Boolean,
+        onDone: (() -> Unit)?,
+    ): Boolean {
         stopAll()
         val f = medId?.let { file(ctx, it, type) }?.takeIf { it.exists() }
             ?: file(ctx, null, type).takeIf { it.exists() }
             ?: return false
         return try {
             player = MediaPlayer().apply {
+                if (asAlarm) {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                }
                 setDataSource(f.absolutePath)
-                setOnCompletionListener { onDone?.invoke() }
+                setOnCompletionListener { mp ->
+                    try { mp.release() } catch (_: Exception) {}
+                    if (player === mp) player = null
+                    onDone?.invoke()
+                }
                 prepare()
                 start()
             }
