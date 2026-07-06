@@ -219,9 +219,8 @@ class AdminActivity : AppCompatActivity() {
             this,
             { tag -> handleWriteTag(tag) },
             NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or
-                NfcAdapter.FLAG_READER_NFC_F or NfcAdapter.FLAG_READER_NFC_V or
-                NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
-            null
+                NfcAdapter.FLAG_READER_NFC_F or NfcAdapter.FLAG_READER_NFC_V,
+            Bundle().apply { putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 250) }
         )
         // مسیر ۲: Foreground Dispatch
         try {
@@ -240,10 +239,10 @@ class AdminActivity : AppCompatActivity() {
 
     private fun handleWriteTag(tag: Tag) {
         Thread {
-            val ok = NfcUtil.writeTag(tag, NfcUtil.REPORT_ID)
+            val err = NfcUtil.writeTag(tag, NfcUtil.REPORT_ID)
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                if (ok) {
+                if (err == null) {
                     vibrate()
                     stopWriteMode()
                     AlertDialog.Builder(this)
@@ -253,7 +252,7 @@ class AdminActivity : AppCompatActivity() {
                         .show()
                 } else {
                     writeDialog?.setMessage(
-                        "\u274c نشد! احتمالا تگ زود برداشته شد.\n" +
+                        "\u274c نشد: " + err + "\n" +
                             "تگ را دوباره به پشت گوشی بچسبان و چند ثانیه ثابت نگه دار…"
                     )
                 }

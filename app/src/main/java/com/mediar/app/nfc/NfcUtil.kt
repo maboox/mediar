@@ -64,37 +64,54 @@ object NfcUtil {
         return null
     }
 
-    /** نوشتن شناسه روی تگ (تگ خالی یا قبلا نوشته‌شده). true = موفق */
-    fun writeTag(tag: Tag, id: String): Boolean {
+    /**
+     * نوشتن شناسه روی تگ (تگ خالی یا قبلا نوشته‌شده).
+     * خروجی: null = موفق، در غیر این صورت متن علت خطا.
+     * تا ۳ بار پشت‌سرهم تلاش می‌کند تا لرزش دست/تماس ناپایدار جبران شود.
+     */
+    fun writeTag(tag: Tag, id: String): String? {
         val record = NdefRecord.createMime(MIME, id.toByteArray(Charsets.UTF_8))
         val msg = NdefMessage(arrayOf(record))
+        var lastError: String? = null
 
-        val ndef = Ndef.get(tag)
-        if (ndef != null) {
-            return try {
-                ndef.connect()
-                if (!ndef.isWritable || ndef.maxSize < msg.toByteArray().size) {
-                    false
-                } else {
+        repeat(3) { attempt ->
+            val ndef = Ndef.get(tag)
+            if (ndef != null) {
+                try {
+                    ndef.connect()
+                    if (!ndef.isWritable) {
+                        return "این تگ قفل شده و دیگر قابل نوشتن نیست"
+                    }
+                    if (ndef.maxSize < msg.toByteArray().size) {
+                        return "ظرفیت این تگ کم است"
+                    }
                     ndef.writeNdefMessage(msg)
-                    true
+                    return null // موفق
+                } catch (e: Exception) {
+                    lastError = e.message ?: e.javaClass.simpleName
+                } finally {
+                    try { ndef.close() } catch (_: Exception) {}
                 }
-            } catch (e: Exception) {
-                false
-            } finally {
-                try { ndef.close() } catch (_: Exception) {}
+            } else {
+                val formatable = NdefFormatable.get(tag)
+                if (formatable != null) {
+                    try {
+                        formatable.connect()
+                        formatable.format(msg)
+                        return null // موفق
+                    } catch (e: Exception) {
+                        lastError = "فرمت تگ نشد: " + (e.message ?: e.javaClass.simpleName)
+                    } finally {
+                        try { formatable.close() } catch (_: Exception) {}
+                    }
+                } else {
+                    val techs = tag.techList.joinToString("، ") { it.substringAfterLast('.') }
+                    return "این نوع تگ قابل نوشتن NDEF نیست ($techs)"
+                }
             }
+            // کمی صبر و تلاش دوباره
+            try { Thread.sleep(250) } catch (_: InterruptedException) {}
         }
-
-        val formatable = NdefFormatable.get(tag) ?: return false
-        return try {
-            formatable.connect()
-            formatable.format(msg)
-            true
-        } catch (e: Exception) {
-            false
-        } finally {
-            try { formatable.close() } catch (_: Exception) {}
-        }
+        return lastError ?: "خطای نامشخص"
     }
 }
