@@ -1,66 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <uses-permission android:name="android.permission.NFC" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
-    <uses-feature
-        android:name="android.hardware.nfc"
-        android:required="true" />
-
-    <application
-        android:name=".App"
-        android:allowBackup="true"
-        android:icon="@drawable/ic_launcher"
-        android:label="@string/app_name"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.Mediar">
-
-        <activity
-            android:name=".ui.MainActivity"
-            android:exported="true"
-            android:launchMode="singleTask">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/vnd.mediar" />
-            </intent-filter>
+    <uses-permission android:name="android.permission.NFC"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-feature android:name="android.hardware.nfc" android:required="false"/>
+    <application android:label="مدیار | Mediar" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="false" android:allowBackup="false" android:supportsRtl="true" android:icon="@drawable/ic_mediar">
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+            <intent-filter><action android:name="android.nfc.action.NDEF_DISCOVERED"/><category android:name="android.intent.category.DEFAULT"/><data android:mimeType="application/vnd.com.mediar.tag"/></intent-filter>
         </activity>
-
-        <activity android:name=".ui.ScanActivity" android:exported="false" />
-        <activity android:name=".ui.PinActivity" android:exported="false" />
-        <activity android:name=".ui.AdminActivity" android:exported="false" />
-        <activity android:name=".ui.MedEditActivity" android:exported="false" />
-        <activity android:name=".ui.DashboardActivity" android:exported="false" />
-
-        <receiver android:name=".alarm.AlarmReceiver" android:exported="false" />
-        <receiver
-            android:name=".alarm.BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
+        <receiver android:name=".reminder.AlarmReceiver" android:exported="false"/>
+        <receiver android:name=".reminder.RebuildReceiver" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/><action android:name="android.intent.action.MY_PACKAGE_REPLACED"/><action android:name="android.intent.action.TIME_SET"/><action android:name="android.intent.action.TIMEZONE_CHANGED"/><action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED"/></intent-filter>
         </receiver>
-
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="com.mediar.app.fileprovider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-        </provider>
-
     </application>
 </manifest>
