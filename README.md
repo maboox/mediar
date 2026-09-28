@@ -39,4 +39,4 @@
 - گوشی را ری‌استارت و مجوز آلارم/اعلان را تغییر دهید؛ یادآورهای نوبت بعد را بررسی کنید. تگ‌ها را پس از پشتیبان‌گیری و بازیابی روی نصب آزمایشی دوباره بخوانید.
 - صدای فارسی آفلاین نصب‌شده و نصب‌نشده، حالت بدون صدا، TalkBack، چیدمان راست‌چین، حالت تیره و اندازهٔ متن بزرگ را بررسی کنید.
 
-نسخه‌های ساخت: AGP 8.13.2، Gradle 8.13، JDK 17، Kotlin 2.2.20 و Compose BOM 2026.09.00. مستندات رسمی: [AGP](https://developer.android.com/build/releases/agp-8-13-0-release-notes)، [Compose BOM](https://developer.android.com/develop/ui/compose/bom)، [Exact alarms](https://developer.android.com/develop/background-work/services/alarms).
+نسخه‌های ساخت: AGP 8.13.2، Gradle 8.13، JDK 17، Kotlin 2.2.20 و Compose BOM 2025.08.00. مستندات رسمی: [AGP](https://developer.android.com/build/releases/agp-8-13-0-release-notes)، [Compose BOM](https://developer.android.com/develop/ui/compose/bom)، [Exact alarms](https://developer.android.com/develop/background-work/services/alarms).
