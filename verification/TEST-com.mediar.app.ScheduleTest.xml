@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.mediar.app.ScheduleTest" tests="17" skipped="0" failures="0" errors="0" timestamp="2026-10-04T08:05:48.298Z" hostname="8161eb9f1be5" time="0.132">
+  <properties/>
+  <testcase name="dailyKeepsPerDoseAmounts" classname="com.mediar.app.ScheduleTest" time="0.111"/>
+  <testcase name="overlappingHoursStillRequireSelection" classname="com.mediar.app.ScheduleTest" time="0.003"/>
+  <testcase name="effectiveDateDoesNotMoveCycleAnchor" classname="com.mediar.app.ScheduleTest" time="0.0"/>
+  <testcase name="windowAndDifferentPhysicalTagsCannotConfirm" classname="com.mediar.app.ScheduleTest" time="0.001"/>
+  <testcase name="invalidTimesAmountsAndEmptyWeekAreRejected" classname="com.mediar.app.ScheduleTest" time="0.001"/>
+  <testcase name="boundariesPauseAndEnd" classname="com.mediar.app.ScheduleTest" time="0.0"/>
+  <testcase name="weeklyOnlySelectedDays" classname="com.mediar.app.ScheduleTest" time="0.0"/>
+  <testcase name="repeatedCallbacksNeedPhysicalRemoval" classname="com.mediar.app.ScheduleTest" time="0.0"/>
+  <testcase name="earlyAndOutsideStayDifferent" classname="com.mediar.app.ScheduleTest" time="0.0"/>
+  <testcase name="daylightSavingGapDoesNotCrashOrDuplicate" classname="com.mediar.app.ScheduleTest" time="0.004"/>
+  <testcase name="singleCompletedDoseCannotCreateAnother" classname="com.mediar.app.ScheduleTest" time="0.003"/>
+  <testcase name="rotationResetNeedsNewFirstTap" classname="com.mediar.app.ScheduleTest" time="0.0"/>
+  <testcase name="cycleCrossesMonth" classname="com.mediar.app.ScheduleTest" time="0.001"/>
+  <testcase name="intervalAnchoredAtStart" classname="com.mediar.app.ScheduleTest" time="0.001"/>
+  <testcase name="stockEstimateIncludesOffDaysAndFractions" classname="com.mediar.app.ScheduleTest" time="0.002"/>
+  <testcase name="versionsKeepDistinctIds" classname="com.mediar.app.ScheduleTest" time="0.002"/>
+  <testcase name="timezonePreservesSlotIdAndWallTime" classname="com.mediar.app.ScheduleTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

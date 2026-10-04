@@ -1,10 +1,7 @@
 .gradle/
-build/
-app/build/
+**/build/
 local.properties
+*.jks
+*.keystore
 .idea/
-*.iml
-.DS_Store
-captures/
-.externalNativeBuild/
-.cxx/
+!signing/mediar-debug.keystore
