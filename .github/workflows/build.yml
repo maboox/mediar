@@ -1,36 +1,47 @@
-name: Build APK
-
+name: Build Mediar APK
 on:
   push:
-    branches: [ main ]
+    branches: [main, master, v2, v3]
   workflow_dispatch:
-
+permissions:
+  contents: write
 jobs:
-  build:
+  android:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
-
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
-
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk mediar.apk
-
-      - name: Upload APK artifact
+          cache: gradle
+      - uses: android-actions/setup-android@v4
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Test and build
+        run: bash ./gradlew --no-daemon testDebugUnitTest assembleDebug lintDebug
+      - name: APK
         uses: actions/upload-artifact@v4
         with:
-          name: mediar-apk
-          path: mediar.apk
+          name: Mediar-v3-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - name: Test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mediar-test-reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
+      - name: Publish APK as release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk mediar.apk
+          TAG="apk-$(echo "$BRANCH" | tr '/' '-')"
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" mediar.apk --target "$GITHUB_SHA" --prerelease \
+            --title "Mediar APK ($BRANCH) #$GITHUB_RUN_NUMBER" --notes "Built from $GITHUB_SHA"
