@@ -1,13 +1,15 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
 
 // کلید امضا به‌صورت متن base64 در ریپو نگه داشته می‌شود و موقع بیلد به فایل تبدیل می‌شود
-val keystoreFile = keystoreFile
+val keystoreFile: File = file("mediar-debug.keystore")
 if (!keystoreFile.exists()) {
     val b64 = file("mediar-debug.keystore.b64")
-    if (b64.exists()) keystoreFile.writeBytes(java.util.Base64.getMimeDecoder().decode(b64.readText()))
+    if (b64.exists()) keystoreFile.writeBytes(Base64.getMimeDecoder().decode(b64.readText()))
 }
 
 android {
