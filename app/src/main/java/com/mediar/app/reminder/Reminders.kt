@@ -38,10 +38,11 @@ object Reminders {
         channels(c)
         val db=c.store();db.materialize()
         val now=System.currentTimeMillis();val today=LocalDate.now();val states=db.reminders().associateBy{it.id}
-        db.expectations().forEach { e ->
+        val archived=db.medicines().filter{it.archived}.map{it.id}.toSet()
+        // Only yesterday..tomorrow can hold alarms; older history and far-future days need no work.
+        db.expectations().filter{it.date>=today.minusDays(2) && it.date<=today.plusDays(1)}.forEach { e ->
             alarm(c).cancel(pending(c,e.id))
-            if(e.obsolete || db.medicine(e.medicine)?.archived==true || db.status(e.id)!="unknown" || e.date<today) {cancel(c,e.id);return@forEach}
-            if(e.date>today.plusDays(1))return@forEach
+            if(e.obsolete || e.medicine in archived || e.date<today || db.status(e.id)!="unknown") {cancel(c,e.id);return@forEach}
             var state=states[e.id]
             if(state==null){state=Reminder(e.id,maxOf(e.due,now+3_000),0,false,0);db.reminder(state)}
             else if(state.attempt==0 && state.snoozes==0 && !state.ended && e.due>now){state=state.copy(next=e.due);db.reminder(state)}

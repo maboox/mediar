@@ -18,6 +18,7 @@ import com.mediar.app.backup.*
 import com.mediar.app.nfc.NfcController
 import com.mediar.app.reminder.Reminders
 import com.mediar.app.ui.MediarUi
+import com.mediar.app.ui.TagActivity
 import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 
@@ -61,7 +62,8 @@ class MainActivity: ComponentActivity() {
     fun cancelWrite(){writeToken=null;nfc.cancelWrite();model.permissionTick++}
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState);speech=Speech(this)
-        nfc=NfcController(this,model::scan,{token,ok->if(writeToken==token)writeToken=null;model.permissionTick++;model.finishTag(token,ok)},{model.toast=model.t("تگ مدیار خوانده نشد","Could not read a Mediar tag")})
+        // A tag read while the app is open opens the same popup as a tag read with the app closed.
+        nfc=NfcController(this,{token,physical->startActivity(TagActivity.intent(this,token,physical))},{token,ok->if(writeToken==token)writeToken=null;model.permissionTick++;model.finishTag(token,ok)},{model.toast=model.t("تگ مدیار خوانده نشد","Could not read a Mediar tag")})
         setContent {MediarUi(model,this)}
         lifecycleScope.launch {model.sounds.collect {(text,clip)->speech.speak(text,clip)}}
         if(savedInstanceState==null)consume(intent)
@@ -69,10 +71,13 @@ class MainActivity: ComponentActivity() {
     @Suppress("DEPRECATION") private fun consume(intent: Intent?) {
         if(intent?.action==NfcAdapter.ACTION_NDEF_DISCOVERED){intent.getParcelableExtra<Tag>(NfcAdapter.EXTRA_TAG)?.let{nfc.process(it)}}
         intent?.getStringExtra("expected")?.let(model::openExpected)
-        intent?.removeExtra("expected");intent?.removeExtra(NfcAdapter.EXTRA_TAG)
+        // Box (group) tags need selecting medicines on the scan page.
+        intent?.getStringExtra(EXTRA_SCAN_TOKEN)?.let{model.scan(it,false)}
+        intent?.removeExtra("expected");intent?.removeExtra(NfcAdapter.EXTRA_TAG);intent?.removeExtra(EXTRA_SCAN_TOKEN)
     }
     override fun onNewIntent(intent: Intent){super.onNewIntent(intent);setIntent(intent);consume(intent)}
     override fun onResume(){super.onResume();nfc.start();speech.refresh();model.resumed()}
     override fun onPause(){nfc.stop();writeToken=null;model.permissionTick++;speech.cancelRecording();speech.stop();model.paused();super.onPause()}
     override fun onDestroy(){clearPassword();nfc.dispose();speech.release();super.onDestroy()}
+    companion object { const val EXTRA_SCAN_TOKEN="scan_token" }
 }

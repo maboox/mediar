@@ -105,7 +105,7 @@ import java.util.Locale
     }
     Panel {
         Text(m.t("سه کار ساده","Three simple steps"),style=MaterialTheme.typography.titleLarge)
-        Text(m.t("۱. مدیر دارو و ساعت‌ها را تعریف می‌کند.\n۲. مصرف‌کننده تگ را اسکن می‌کند یا نوبت را باز می‌کند.\n۳. با «خوردم» یا تماس دومِ جداگانه، مصرف ثبت می‌شود.","1. The manager adds medicines and times.\n2. Scan a tag or open a dose.\n3. Record with ‘I took it’ or a separate second tap."))
+        Text(m.t("۱. مدیر دارو و ساعت‌ها را تعریف می‌کند.\n۲. مصرف‌کننده گوشی را به جعبه می‌زند؛ پنجره‌ای باز می‌شود و وضعیت را با صدا می‌گوید.\n۳. بعد از خوردن، با تماس دوم یا «خوردم» مصرف ثبت می‌شود.","1. The manager adds medicines and times.\n2. Scan a tag or open a dose.\n3. Record with ‘I took it’ or a separate second tap."))
         Action(m.t("شروع راه‌اندازی","Set up Mediar"),icon=Icons.Rounded.ArrowForward){m.page="new_pin"}
         Text(m.t("کاملاً محلی • بدون حساب و اینترنت","Local • No account or internet"),style=MaterialTheme.typography.bodySmall)
     }
@@ -167,7 +167,7 @@ import java.util.Locale
     val b=m.binding
     Panel(color=MaterialTheme.colorScheme.primaryContainer){
         Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Rounded.Nfc,null,Modifier.size(38.dp),tint=MaterialTheme.colorScheme.primary);Spacer(Modifier.width(12.dp));Text(m.t("تگ را نزدیک گوشی بگیرید","Bring the tag near your phone"),style=MaterialTheme.typography.titleLarge)}
-        Text(m.t("تماس اول فقط وضعیت را می‌گوید. برای تأیید، تگ را کاملاً دور کنید و تا ۳۰ ثانیه دوباره نزدیک کنید، یا دکمهٔ «خوردم» را بزنید.","The first tap shows status. Remove the tag fully and tap again within 30 seconds, or use ‘I took it’."))
+        Text(m.t("لازم نیست برنامه باز باشد. تماس اول می‌گوید وقت دارو هست یا نه. بعد از خوردن، تا ۱۵ دقیقه دوباره گوشی را به همان تگ بزنید یا دکمهٔ «خوردم» را بزنید.","The app does not need to be open. The first tap tells you whether it is time. After taking it, tap the same tag again within 15 minutes, or press ‘I took it’."))
         if(!a.nfc.exists())Text(m.t("این گوشی NFC ندارد؛ از صفحهٔ امروز استفاده کنید.","This phone has no NFC. Use the Today page."))
         else if(!a.nfc.enabled())OutlinedButton(onClick={a.startActivity(Intent(Settings.ACTION_NFC_SETTINGS))}){Text(m.t("روشن‌کردن NFC","Enable NFC"))}
     }
@@ -181,7 +181,7 @@ import java.util.Locale
             if(med.archived)Badge(m.t("دارو بایگانی شده","Archived medicine"))
             Text(m.t("آخرین مصرف ثبت‌شده","Last recorded consumption"),style=MaterialTheme.typography.labelLarge)
             Text(last?.let{datetime(it.takenAt,m.en)}?:m.t("هنوز مصرفی ثبت نشده","No consumption recorded yet"))
-            if(doses.size>1)Text(m.t("این دارو چند نوبت دارد؛ نوبت مربوط را خودتان انتخاب کنید. تماس دوم خودکار ثبت نمی‌کند.","This medicine has multiple doses. Select the intended one; a second tap does not auto-confirm."),style=MaterialTheme.typography.bodySmall)
+            if(doses.size>1)Text(m.t("این دارو چند نوبت دارد؛ با اسکن تگ، نوبتی که الان وقتش است انتخاب می‌شود.","This medicine has multiple doses; scanning the tag picks the dose that is due now."),style=MaterialTheme.typography.bodySmall)
             if(doses.isEmpty())Text(m.t("برای امروز نوبتی تعریف نشده. ثبت خارج از برنامه، نوبت بعد را تکمیل نمی‌کند.","No dose is planned today. Outside-plan records do not complete the next dose."))
         }
         doses.forEach{DoseCard(m,it)}
@@ -209,8 +209,8 @@ import java.util.Locale
 }
 @Composable private fun Help(m: AppModel) {
     Panel {Text(m.t("چطور استفاده کنم؟","How to use Mediar"),style=MaterialTheme.typography.headlineMedium)
-        Text(m.t("۱. زمان و مقدار هر نوبت را در صفحهٔ امروز ببینید.\n۲. پس از مصرف واقعی، «خوردم» را بزنید.\n۳. اگر تگ دارید، تماس اول وضعیت را می‌گوید؛ تماس دومِ جداشده می‌تواند همان نوبت را ثبت کند.","1. Check the time and amount on Today.\n2. After actual consumption, tap ‘I took it’.\n3. A tag's first tap shows status; a separate second tap can record that dose."))
-        Text(m.t("اگر چند نوبت برای یک دارو دارید یا تگ جعبه را اسکن می‌کنید، موارد مربوط را روی صفحه انتخاب کنید.","For multiple doses or a box tag, select the intended doses on screen."))
+        Text(m.t("۱. گوشی را به جعبهٔ دارو بزنید؛ لازم نیست برنامه باز باشد. پنجره‌ای باز می‌شود و می‌گوید الان وقتش هست، زود است یا قبلاً خورده‌اید.\n۲. بعد از خوردن، دوباره گوشی را به همان جعبه بزنید (تا ۱۵ دقیقه) یا «خوردم» را بزنید.\n۳. اگر اشتباه ثبت شد، «اشتباه شد» را بزنید.","1. Tap the phone on the medicine box; the app does not need to be open. A popup says whether it is time, too early, or already taken.\n2. After taking it, tap the same box again (within 15 minutes) or press ‘I took it’.\n3. If it was recorded by mistake, press ‘Mistake’."))
+        Text(m.t("برای تگ جعبهٔ چنددارویی، داروهای مصرف‌شده را روی صفحه انتخاب کنید.","For a multi-medicine box tag, select the medicines you took on screen."))
     }
     Panel {Text(m.t("معنی وضعیت‌ها","What statuses mean"),style=MaterialTheme.typography.titleLarge)
         Text(m.t("✓ ثبت شده: مصرف توسط شما تأیید شده.\n؟ نامشخص: برنامه نمی‌داند دارو مصرف شده یا نه.\n− مصرف‌نشده: خودتان صریحاً اعلام کرده‌اید.","✓ Recorded: you confirmed consumption.\n? Unknown: the app does not know whether it was taken.\n− Not taken: you explicitly said so."))

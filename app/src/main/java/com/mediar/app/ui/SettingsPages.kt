@@ -39,7 +39,7 @@ import kotlinx.coroutines.delay
         OutlinedButton(onClick={m.page="tags"},modifier=Modifier.fillMaxWidth().heightIn(min=54.dp)){Text(m.t("جعبه‌ها و تگ‌ها","Boxes and tags"))}
         OutlinedButton(onClick={m.page="backup"},modifier=Modifier.fillMaxWidth().heightIn(min=54.dp)){Text(m.t("پشتیبان و گزارش","Backup and report"))}
         TextButton(onClick={m.page="new_pin"}){Text(m.t("تغییر PIN و کد بازیابی","Change PIN and recovery code"))}
-        Text("Mediar 3.0.0",style=MaterialTheme.typography.bodySmall)
+        Text("Mediar 3.1.0",style=MaterialTheme.typography.bodySmall)
     }
 }
 @Composable fun VoicePage(m: AppModel,a: MainActivity) {
@@ -105,6 +105,11 @@ import kotlinx.coroutines.delay
         if(a.writeToken!=null){Badge(m.t("منتظر تگ…","Waiting for tag…"));Action(m.t("لغو نوشتن","Cancel writing")){a.cancelWrite()}}
         else Action(m.t("آمادهٔ نوشتن • تگ را نزدیک کنید","Write a tag • hold it near"),enabled=!m.busy && (kind=="today" || target.isNotBlank()),icon=Icons.Rounded.Nfc){a.write(kind,target)}
         if(!a.nfc.enabled())TextButton(onClick={runCatching{a.startActivity(Intent(Settings.ACTION_NFC_SETTINGS))}}){Text(m.t("تنظیمات NFC گوشی","Phone NFC settings"))}
+    }
+    Panel {
+        Text(m.t("ثبت با تگ","Recording with a tag"),style=MaterialTheme.typography.titleLarge)
+        Row(verticalAlignment=Alignment.CenterVertically){Switch(m.data.settings["single_tap"]=="true",{m.settings("single_tap",it.toString())});Spacer(Modifier.width(8.dp));Text(m.t("ثبت با اولین تماس","Record on the first tap"),Modifier.weight(1f))}
+        Text(m.t("خاموش (پیشنهادی): تماس اول می‌گوید «الان وقتشه، بخور» و تماس دوم بعد از خوردن (تا ۱۵ دقیقه) یا دکمهٔ «خوردم» ثبت می‌کند. روشن: اولین تماس در وقت نوبت همان لحظه ثبت می‌کند.","Off (recommended): the first tap says it is time; a second tap after taking it (within 15 minutes) or ‘I took it’ records it. On: the first tap during the dose window records immediately."),style=MaterialTheme.typography.bodySmall)
     }
     m.data.tags.filter{it.active}.forEach {tag->Panel {
         Text(when(tag.kind){"medicine"->m.data.medicines.firstOrNull{it.id==tag.target}?.name?:m.t("دارو","Medicine");"group"->m.data.groups.firstOrNull{it.id==tag.target}?.name?:m.t("جعبه","Box");else->m.t("گزارش امروز","Today overview")},style=MaterialTheme.typography.titleMedium)
