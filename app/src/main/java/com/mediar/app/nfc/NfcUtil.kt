@@ -68,10 +68,15 @@ object NfcUtil {
      * نوشتن شناسه روی تگ (تگ خالی یا قبلا نوشته‌شده).
      * خروجی: null = موفق، در غیر این صورت متن علت خطا.
      * تا ۳ بار پشت‌سرهم تلاش می‌کند تا لرزش دست/تماس ناپایدار جبران شود.
+     *
+     * علاوه بر رکورد شناسه، یک «Android Application Record» هم نوشته می‌شود
+     * تا اندروید با نزدیک کردن گوشی، همیشه مستقیما همین اپ را باز کند
+     * (حتی اگر اپ دیگری مثل NFC Tools هم نصب باشد).
      */
-    fun writeTag(tag: Tag, id: String): String? {
+    fun writeTag(tag: Tag, id: String, packageName: String): String? {
         val record = NdefRecord.createMime(MIME, id.toByteArray(Charsets.UTF_8))
-        val msg = NdefMessage(arrayOf(record))
+        val full = NdefMessage(arrayOf(record, NdefRecord.createApplicationRecord(packageName)))
+        val small = NdefMessage(arrayOf(record))
         var lastError: String? = null
 
         repeat(3) { attempt ->
@@ -82,7 +87,8 @@ object NfcUtil {
                     if (!ndef.isWritable) {
                         return "این تگ قفل شده و دیگر قابل نوشتن نیست"
                     }
-                    if (ndef.maxSize < msg.toByteArray().size) {
+                    val msg = if (ndef.maxSize >= full.byteArrayLength) full else small
+                    if (ndef.maxSize < msg.byteArrayLength) {
                         return "ظرفیت این تگ کم است"
                     }
                     ndef.writeNdefMessage(msg)
@@ -102,7 +108,7 @@ object NfcUtil {
                 if (formatable != null) {
                     try {
                         formatable.connect()
-                        formatable.format(msg)
+                        formatable.format(full)
                         return null // موفق
                     } catch (e: Exception) {
                         lastError = "فرمت تگ نشد: " + (e.message ?: e.javaClass.simpleName)

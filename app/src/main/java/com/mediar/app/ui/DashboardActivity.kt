@@ -9,15 +9,11 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.mediar.app.R
-import com.mediar.app.alarm.Alarms
 import com.mediar.app.data.Db
-import com.mediar.app.data.DoseLog
 import com.mediar.app.logic.Fmt
 import com.mediar.app.logic.ScanEngine
 import com.mediar.app.logic.Schedule
-import java.time.Duration
 import java.time.ZonedDateTime
-import java.util.UUID
 
 /** داشبورد ۳۰ روز گذشته: پایبندی، تأخیرها، موجودی، نوبت‌های جامانده */
 class DashboardActivity : AppCompatActivity() {
@@ -44,7 +40,8 @@ class DashboardActivity : AppCompatActivity() {
         val now = ZonedDateTime.now()
         val from = now.toLocalDate().minusDays(29)
         val allRows = ScanEngine.dosesBetween(this, from, now.toLocalDate())
-        val pastRows = allRows.filter { !it.dueAt.isAfter(now) }
+        // فقط نوبت‌هایی که یا ثبت شده‌اند یا پنجره‌شان بسته شده (نوبت در جریان، جامانده حساب نمی‌شود)
+        val pastRows = allRows.filter { it.log != null || !it.slot.end.isAfter(now) }
 
         // ---------- خلاصه برای هر دارو ----------
         for (med in Db.get(this).activeMeds()) {
@@ -72,7 +69,7 @@ class DashboardActivity : AppCompatActivity() {
             sb.append(" (").append(taken).append(" از ").append(total).append(" نوبت)").append("\n")
             if (late.isNotEmpty()) sb.append("میانگین تأخیر: ").append(avgDelay).append(" دقیقه (").append(late.size).append(" نوبت با تأخیر)").append("\n")
             if (missed > 0) sb.append("جامانده: ").append(missed).append(" نوبت").append("\n")
-            sb.append("موجودی: ").append(trim(med.stock))
+            sb.append("موجودی: ").append(Fmt.num(med.stock))
             if (daysLeft in 0..365) sb.append(" — حدود ").append(daysLeft).append(" روز دیگه تموم می‌شه")
             if (med.stock <= med.lowThreshold) sb.append("  \u26A0\uFE0F کم!")
 
@@ -103,16 +100,7 @@ class DashboardActivity : AppCompatActivity() {
                     .setTitle("ثبت دستی")
                     .setMessage(r.med.name + " — " + Fmt.whenText(r.dueAt) + "\nاین نوبت خورده شده؟")
                     .setPositiveButton("بله، ثبت کن") { _, _ ->
-                        val nowMs = System.currentTimeMillis()
-                        val dueMs = r.dueAt.toInstant().toEpochMilli()
-                        Db.get(this).addLog(
-                            DoseLog(
-                                UUID.randomUUID().toString(), r.med.id, dueMs, nowMs,
-                                Duration.ofMillis(nowMs - dueMs).toMinutes(), "manual"
-                            )
-                        )
-                        Db.get(this).addStock(r.med.id, -r.med.doseAmount)
-                        Alarms.rescheduleAll(this)
+                        ScanEngine.manualLog(this, r.med, r.slot.dueMillis)
                         refresh()
                     }
                     .setNegativeButton("انصراف", null)
@@ -135,7 +123,7 @@ class DashboardActivity : AppCompatActivity() {
             val takenZ = java.time.Instant.ofEpochMilli(l.takenAt).atZone(now.zone)
             val statusFa = when (l.status) {
                 "ontime" -> "سر وقت \u2705"
-                "early" -> "کمی زودتر"
+                "early" -> "زودتر (" + Fmt.duration(-l.delayMin) + ")"
                 "late" -> "با " + Fmt.delayText(l.delayMin)
                 else -> "ثبت دستی"
             }
@@ -143,6 +131,19 @@ class DashboardActivity : AppCompatActivity() {
             tv.text = medName + " — " + Fmt.whenText(takenZ, now) + " — " + statusFa
             tv.textSize = 14f
             tv.setPadding(16, 12, 16, 12)
+            // نگه داشتن انگشت روی یک ثبت = حذف آن (اگر اشتباه ثبت شده)
+            tv.setOnLongClickListener {
+                AlertDialog.Builder(this)
+                    .setTitle("حذف این ثبت؟")
+                    .setMessage(tv.text.toString() + "\n\nموجودی دارو هم برگردانده می‌شود.")
+                    .setPositiveButton("حذف") { _, _ ->
+                        ScanEngine.undo(this, l.id)
+                        refresh()
+                    }
+                    .setNegativeButton("انصراف", null)
+                    .show()
+                true
+            }
             logsC.addView(tv)
         }
     }
@@ -166,7 +167,7 @@ class DashboardActivity : AppCompatActivity() {
         val now = ZonedDateTime.now()
         val from = now.toLocalDate().minusDays(29)
         val pastRows = ScanEngine.dosesBetween(this, from, now.toLocalDate())
-            .filter { !it.dueAt.isAfter(now) }
+            .filter { it.log != null || !it.slot.end.isAfter(now) }
 
         val sb = StringBuilder("گزارش مصرف دارو — ۳۰ روز گذشته\n\n")
         for (med in Db.get(this).activeMeds()) {
@@ -188,6 +189,4 @@ class DashboardActivity : AppCompatActivity() {
         startActivity(Intent.createChooser(send, "ارسال گزارش"))
     }
 
-    private fun trim(d: Double): String =
-        if (d == d.toLong().toDouble()) d.toLong().toString() else d.toString()
 }

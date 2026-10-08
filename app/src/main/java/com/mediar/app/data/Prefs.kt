@@ -24,6 +24,30 @@ class Prefs private constructor(ctx: Context) {
         get() = sp.getInt("max_repeats", 12)
         set(v) = sp.edit().putInt("max_repeats", v).apply()
 
+    /** پنجره قبول دیرتر از موعد (دقیقه) — بعد از این، نوبت «جامانده» حساب می‌شود */
+    var lateWindowMin: Long
+        get() = sp.getLong("late_window_min", 360L)
+        set(v) = sp.edit().putLong("late_window_min", v).apply()
+
+    /**
+     * حالت ثبت با یک‌بار زدن: اولین اسکن در وقت نوبت، همان لحظه «خورده شد» ثبت می‌شود.
+     * حالت پیش‌فرض (false): اسکن اول می‌گوید «وقتشه بخور» و اسکن دوم (یا دکمه «خوردم») ثبت می‌کند.
+     */
+    var singleTap: Boolean
+        get() = sp.getBoolean("single_tap", false)
+        set(v) = sp.edit().putBoolean("single_tap", v).apply()
+
+    /** نوبتی که با اسکن اول «آماده ثبت» شده (موعد به epoch millis) */
+    fun armedDue(medId: String): Long = sp.getLong("armed_$medId", 0L)
+
+    fun setArmed(medId: String, dueAt: Long) {
+        sp.edit().putLong("armed_$medId", dueAt).apply()
+    }
+
+    fun clearArmed(medId: String) {
+        sp.edit().remove("armed_$medId").apply()
+    }
+
     // ---------- PIN ----------
 
     fun hasPin(): Boolean = sp.getString("pin_hash", null) != null

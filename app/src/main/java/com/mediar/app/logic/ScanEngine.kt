@@ -11,82 +11,160 @@ import java.time.LocalDate
 import java.time.ZonedDateTime
 import java.util.UUID
 
+/** نتیجه اسکن تگ یک دارو — برای نمایش در پاپ‌آپ */
 sealed class ScanOutcome {
-    /** این نوبت قبلا خورده شده */
-    data class AlreadyTaken(val next: ZonedDateTime?) : ScanOutcome()
+    abstract val med: Med
+
+    /** وقتشه — اسکن اول؛ بعد از خوردن باید دوباره تگ را بزند (یا دکمه «خوردم») */
+    data class AskToTake(override val med: Med, val slot: Slot, val lateMin: Long) : ScanOutcome()
+
     /** همین الان ثبت شد */
-    data class Logged(val status: String, val delayMin: Long, val dueAt: ZonedDateTime, val lowStock: Boolean) : ScanOutcome()
-    /** هنوز خیلی زوده */
-    data class TooEarly(val dueAt: ZonedDateTime) : ScanOutcome()
+    data class Logged(
+        override val med: Med, val slot: Slot, val log: DoseLog, val lowStock: Boolean
+    ) : ScanOutcome()
+
+    /** این نوبت قبلا خورده شده */
+    data class AlreadyTaken(
+        override val med: Med, val slot: Slot, val takenAt: ZonedDateTime, val next: ZonedDateTime?
+    ) : ScanOutcome()
+
+    /** تازه یک دوز خورده — هنوز نباید دوز بعدی را بخورد */
+    data class TooSoon(
+        override val med: Med, val lastTakenAt: ZonedDateTime, val allowedAt: ZonedDateTime
+    ) : ScanOutcome()
+
+    /** هنوز زوده */
+    data class TooEarly(
+        override val med: Med, val next: Slot, val missed: Slot?, val lastTakenAt: ZonedDateTime?
+    ) : ScanOutcome()
+
+    /** نوبت‌های امروز تمام شده */
+    data class DoneForToday(
+        override val med: Med, val next: ZonedDateTime?, val missed: Slot?, val lastTakenAt: ZonedDateTime?
+    ) : ScanOutcome()
+
     /** امروز نوبت این دارو نیست */
-    data class NotToday(val next: ZonedDateTime?) : ScanOutcome()
+    data class NotToday(override val med: Med, val next: ZonedDateTime?) : ScanOutcome()
 }
 
 object ScanEngine {
 
-    /** منطق اصلی اسکن تگ یک دارو */
-    fun evaluateAndLog(ctx: Context, med: Med, now: ZonedDateTime = ZonedDateTime.now()): ScanOutcome {
+    private fun atZone(ms: Long, now: ZonedDateTime): ZonedDateTime =
+        java.time.Instant.ofEpochMilli(ms).atZone(now.zone)
+
+    fun decide(ctx: Context, med: Med, now: ZonedDateTime = ZonedDateTime.now()): Decision {
         val db = Db.get(ctx)
-        val schedule = Schedule(med.scheduleJson)
-        val earlyWindow = Prefs.get(ctx).earlyWindowMin
+        val prefs = Prefs.get(ctx)
+        return DoseLogic.decide(
+            Schedule(med.scheduleJson), now,
+            prefs.earlyWindowMin, prefs.lateWindowMin,
+            logFor = { due -> db.logFor(med.id, due)?.let { TakenInfo(it.dueAt, it.takenAt) } },
+            lastLog = db.lastLog(med.id)?.let { TakenInfo(it.dueAt, it.takenAt) }
+        )
+    }
 
-        val todayDoses = schedule.dueTimesForDate(now.toLocalDate(), now.zone)
-        if (todayDoses.isEmpty()) {
-            return ScanOutcome.NotToday(schedule.nextDue(now))
+    /**
+     * منطق اصلی اسکن تگ یک دارو.
+     * @param confirm true یعنی کاربر صریحا گفت «خوردم» (دکمه یا اسکن دوم)
+     */
+    fun scan(ctx: Context, med: Med, confirm: Boolean = false, now: ZonedDateTime = ZonedDateTime.now()): ScanOutcome {
+        val prefs = Prefs.get(ctx)
+        return when (val d = decide(ctx, med, now)) {
+            is Decision.Due -> {
+                val armed = prefs.armedDue(med.id) == d.slot.dueMillis
+                if (confirm || armed || prefs.singleTap) {
+                    logDose(ctx, med, d.slot, now)
+                } else {
+                    prefs.setArmed(med.id, d.slot.dueMillis)
+                    val late = Duration.between(d.slot.due, now).toMinutes().coerceAtLeast(0)
+                    ScanOutcome.AskToTake(med, d.slot, late)
+                }
+            }
+            is Decision.AlreadyTaken -> ScanOutcome.AlreadyTaken(med, d.slot, atZone(d.takenAt, now), d.next)
+            is Decision.TooSoon -> ScanOutcome.TooSoon(med, atZone(d.lastTakenAt, now), d.allowedAt)
+            is Decision.TooEarly -> ScanOutcome.TooEarly(med, d.next, d.missed, d.lastTaken?.let { atZone(it.takenAt, now) })
+            is Decision.DoneForToday -> ScanOutcome.DoneForToday(med, d.next, d.missed, d.lastTaken?.let { atZone(it.takenAt, now) })
+            is Decision.NotToday -> ScanOutcome.NotToday(med, d.next)
         }
+    }
 
-        val unlogged = todayDoses.filter { !db.hasLogFor(med.id, it.toInstant().toEpochMilli()) }
-        if (unlogged.isEmpty()) {
-            return ScanOutcome.AlreadyTaken(schedule.nextDue(now))
-        }
-
-        val due = unlogged.first()
-        if (now.isBefore(due.minusMinutes(earlyWindow))) {
-            return ScanOutcome.TooEarly(due)
-        }
-
-        val delayMin = Duration.between(due, now).toMinutes()
+    private fun logDose(ctx: Context, med: Med, slot: Slot, now: ZonedDateTime): ScanOutcome.Logged {
+        val db = Db.get(ctx)
+        val delayMin = Duration.between(slot.due, now).toMinutes()
         val status = when {
-            delayMin < 0 -> "early"
+            delayMin < -5 -> "early"
             delayMin <= 30 -> "ontime"
             else -> "late"
         }
-        db.addLog(
-            DoseLog(
-                id = UUID.randomUUID().toString(),
-                medId = med.id,
-                dueAt = due.toInstant().toEpochMilli(),
-                takenAt = now.toInstant().toEpochMilli(),
-                delayMin = delayMin,
-                status = status
-            )
+        val log = DoseLog(
+            id = UUID.randomUUID().toString(),
+            medId = med.id,
+            dueAt = slot.dueMillis,
+            takenAt = now.toInstant().toEpochMilli(),
+            delayMin = delayMin,
+            status = status
         )
+        db.addLog(log)
         db.addStock(med.id, -med.doseAmount)
+        Prefs.get(ctx).clearArmed(med.id)
         val after = db.getMed(med.id)
         val lowStock = after != null && after.stock <= after.lowThreshold
 
         Alarms.cancelNotification(ctx, med.id)
-        Alarms.rescheduleAll(ctx)
-        return ScanOutcome.Logged(status, delayMin, due, lowStock)
+        Alarms.rescheduleMed(ctx, after ?: med)
+        return ScanOutcome.Logged(after ?: med, slot, log, lowStock)
+    }
+
+    /** برگرداندن یک ثبت اشتباه (موجودی هم برمی‌گردد) */
+    fun undo(ctx: Context, logId: String) {
+        val db = Db.get(ctx)
+        val log = db.getLog(logId) ?: return
+        db.deleteLog(logId)
+        val med = db.getMed(log.medId) ?: return
+        db.addStock(med.id, med.doseAmount)
+        Prefs.get(ctx).clearArmed(med.id)
+        Alarms.rescheduleMed(ctx, med)
+    }
+
+    /** ثبت دستی یک نوبت گذشته توسط مراقب (زمان دقیق خوردن نامعلوم است) */
+    fun manualLog(ctx: Context, med: Med, dueAt: Long) {
+        val db = Db.get(ctx)
+        if (db.logFor(med.id, dueAt) != null) return
+        db.addLog(
+            DoseLog(
+                id = UUID.randomUUID().toString(),
+                medId = med.id,
+                dueAt = dueAt,
+                takenAt = minOf(dueAt, System.currentTimeMillis()),
+                delayMin = 0,
+                status = "manual"
+            )
+        )
+        db.addStock(med.id, -med.doseAmount)
+        Alarms.cancelNotification(ctx, med.id)
+        Alarms.rescheduleMed(ctx, med)
     }
 
     /** یک سطر برای داشبورد: نوبت برنامه‌ریزی‌شده + ثبت متناظر (اگر باشد) */
-    data class DoseRow(val med: Med, val dueAt: ZonedDateTime, val log: DoseLog?)
+    data class DoseRow(val med: Med, val slot: Slot, val log: DoseLog?) {
+        val dueAt: ZonedDateTime get() = slot.due
+    }
 
-    /** همه نوبت‌های برنامه‌ریزی‌شده در بازه [from, toInclusive] */
+    /** همه نوبت‌های برنامه‌ریزی‌شده در بازه روزهای [from, toInclusive] */
     fun dosesBetween(ctx: Context, from: LocalDate, toInclusive: LocalDate): List<DoseRow> {
         val db = Db.get(ctx)
+        val prefs = Prefs.get(ctx)
         val zone = ZonedDateTime.now().zone
         val out = mutableListOf<DoseRow>()
         for (med in db.activeMeds()) {
             val schedule = Schedule(med.scheduleJson)
-            var d = from
-            while (!d.isAfter(toInclusive)) {
-                for (due in schedule.dueTimesForDate(d, zone)) {
-                    out.add(DoseRow(med, due, db.logFor(med.id, due.toInstant().toEpochMilli())))
-                }
-                d = d.plusDays(1)
-            }
+            val slots = DoseLogic.slotsBetween(
+                schedule,
+                from.atStartOfDay(zone),
+                toInclusive.plusDays(1).atStartOfDay(zone).minusNanos(1),
+                prefs.earlyWindowMin, prefs.lateWindowMin
+            )
+            for (s in slots) out.add(DoseRow(med, s, db.logFor(med.id, s.dueMillis)))
         }
         return out.sortedByDescending { it.dueAt }
     }

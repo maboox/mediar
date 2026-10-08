@@ -26,9 +26,11 @@ import com.mediar.app.alarm.Alarms
 import com.mediar.app.audio.AudioStore
 import com.mediar.app.data.Db
 import com.mediar.app.data.Med
+import com.mediar.app.data.Prefs
 import com.mediar.app.logic.Schedule
 import com.mediar.app.nfc.NfcUtil
 import org.json.JSONObject
+import java.time.LocalDate
 import java.util.UUID
 
 /** افزودن/ویرایش دارو + ضبط صداها + نوشتن تگ NFC */
@@ -103,6 +105,7 @@ class MedEditActivity : AppCompatActivity() {
                 .setPositiveButton("حذف") { _, _ ->
                     Db.get(this).archiveMed(med.id)
                     Alarms.cancelAlarm(this, med.id)
+                    Alarms.cancelNotification(this, med.id)
                     finish()
                 }
                 .setNegativeButton("انصراف", null)
@@ -194,10 +197,18 @@ class MedEditActivity : AppCompatActivity() {
             Toast.makeText(this, "حداقل یک ساعت اضافه کن", Toast.LENGTH_SHORT).show()
             return null
         }
+        // تاریخ شروع قبلی حفظ می‌شود تا با هر ویرایش، شمارش «یک روز در میون» یا دوره به‌هم نریزد
+        val old = Schedule(med.scheduleJson)
+        val newType = when (typeSpinner.selectedItemPosition) {
+            1 -> "interval"
+            3 -> "cycle"
+            else -> ""
+        }
+        val anchor = if (!isNew && old.type == newType && old.anchor != null) old.anchor else LocalDate.now()
         return when (typeSpinner.selectedItemPosition) {
             1 -> {
                 val every = findViewById<EditText>(R.id.inputEvery).text.toString().toIntOrNull() ?: 2
-                Schedule.build("interval", times, every = every.coerceAtLeast(1))
+                Schedule.build("interval", times, every = every.coerceIn(1, 365), anchor = anchor)
             }
             2 -> {
                 val days = weekChecks.filter { it.isChecked }.map { it.tag as Int }
@@ -210,7 +221,7 @@ class MedEditActivity : AppCompatActivity() {
             3 -> {
                 val on = findViewById<EditText>(R.id.inputOn).text.toString().toIntOrNull() ?: 10
                 val off = findViewById<EditText>(R.id.inputOff).text.toString().toIntOrNull() ?: 20
-                Schedule.build("cycle", times, on = on.coerceAtLeast(1), off = off.coerceAtLeast(0))
+                Schedule.build("cycle", times, on = on.coerceIn(1, 365), off = off.coerceIn(0, 365), anchor = anchor)
             }
             else -> Schedule.build("daily", times)
         }
@@ -226,13 +237,19 @@ class MedEditActivity : AppCompatActivity() {
         }
         val schedule = buildScheduleJson() ?: return false
         med.name = name
-        med.doseAmount = findViewById<EditText>(R.id.inputDose).text.toString().toDoubleOrNull() ?: 1.0
-        med.stock = findViewById<EditText>(R.id.inputStock).text.toString().toDoubleOrNull() ?: 0.0
-        med.lowThreshold = findViewById<EditText>(R.id.inputThreshold).text.toString().toDoubleOrNull() ?: 5.0
+        val dose = findViewById<EditText>(R.id.inputDose).text.toString().toDoubleOrNull()
+        if (dose == null || dose <= 0) {
+            Toast.makeText(this, "تعداد در هر نوبت را درست وارد کن (مثلا 1 یا 0.5)", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        med.doseAmount = dose
+        med.stock = (findViewById<EditText>(R.id.inputStock).text.toString().toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+        med.lowThreshold = (findViewById<EditText>(R.id.inputThreshold).text.toString().toDoubleOrNull() ?: 5.0).coerceAtLeast(0.0)
         med.scheduleJson = schedule
         Db.get(this).upsertMed(med)
         isNew = false
-        Alarms.rescheduleAll(this)
+        Prefs.get(this).clearArmed(med.id)
+        Alarms.rescheduleMed(this, med)
         if (close) {
             Toast.makeText(this, "ذخیره شد \u2705", Toast.LENGTH_SHORT).show()
             finish()
@@ -248,8 +265,10 @@ class MedEditActivity : AppCompatActivity() {
     private fun setupAudioRows() {
         val container = findViewById<LinearLayout>(R.id.audioContainer)
         container.removeAllViews()
+        AudioRow.clear()
         val items = listOf(
             AudioStore.TYPE_DUE to "«الان وقتشه این قرص رو بخوری»",
+            AudioStore.TYPE_LOGGED to "«ثبت شد، نوش جان» (بعد از تأیید خوردن)",
             AudioStore.TYPE_TAKEN to "«این قرص رو خوردی، دیگه نخور»",
             AudioStore.TYPE_EARLY to "«هنوز زوده، بعدا بخور»",
             AudioStore.TYPE_NOT_TODAY to "«امروز نوبت این قرص نیست»"
@@ -257,6 +276,11 @@ class MedEditActivity : AppCompatActivity() {
         for ((type, label) in items) {
             container.addView(AudioRow.build(this, med.id, type, label))
         }
+        val hint = TextView(this)
+        hint.text = "اگر صدایی ضبط نشود، پیام عمومی بخش مدیریت پخش می‌شود و اگر آن هم نباشد، گوشی متن را به فارسی می‌خواند."
+        hint.textSize = 13f
+        hint.setPadding(16, 8, 16, 8)
+        container.addView(hint)
     }
 
     // ---------- نوشتن تگ ----------
@@ -308,7 +332,7 @@ class MedEditActivity : AppCompatActivity() {
             writing = true
         }
         Thread {
-            val err = NfcUtil.writeTag(tag, med.id)
+            val err = NfcUtil.writeTag(tag, med.id, packageName)
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (err == null) {

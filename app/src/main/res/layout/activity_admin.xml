@@ -103,6 +103,31 @@
             android:layout_height="wrap_content"
             android:inputType="number" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="تا چند دقیقه بعد از موعد، نوبت هنوز قابل خوردن است (بعدش «جامانده» حساب می‌شود)"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/inputLateWindow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="number" />
+
+        <CheckBox
+            android:id="@+id/checkSingleTap"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="ثبت با یک‌بار زدن (اسکن اول در وقت نوبت، همان لحظه «خورده شد» ثبت شود)" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="حالت پیش‌فرض: بار اول که گوشی به جعبه زده می‌شود می‌گوید «وقتشه بخور»، بعد از خوردن با زدن دوباره (یا دکمه «خوردم») ثبت می‌شود."
+            android:textColor="#757575"
+            android:textSize="13sp" />
+
         <Button
             android:id="@+id/btnSaveSettings"
             android:layout_width="match_parent"
@@ -128,6 +153,33 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="⏰ اجازه آلارم دقیق" />
+
+        <Button
+            android:id="@+id/btnFullScreen"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📲 اجازه نمایش یادآوری روی صفحه قفل" />
+
+        <Button
+            android:id="@+id/btnNotifSettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🔔 تنظیمات اعلان‌ها" />
+
+        <Button
+            android:id="@+id/btnTestVoice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🔊 آزمایش صدای گوینده" />
+
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#F5F5F5"
+            android:padding="12dp"
+            android:textColor="#212121"
+            android:textSize="14sp" />
 
         <TextView
             android:layout_width="match_parent"

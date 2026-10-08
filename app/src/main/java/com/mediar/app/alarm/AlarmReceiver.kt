@@ -11,66 +11,79 @@ import com.mediar.app.R
 import com.mediar.app.data.Db
 import com.mediar.app.data.Med
 import com.mediar.app.data.Prefs
-import com.mediar.app.ui.MainActivity
+import com.mediar.app.logic.DoseLogic
+import com.mediar.app.logic.Fmt
+import com.mediar.app.logic.Schedule
+import com.mediar.app.ui.PopupActivity
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+import java.time.ZonedDateTime
 
 class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(ctx: Context, intent: Intent) {
         val medId = intent.getStringExtra(Alarms.EXTRA_MED_ID) ?: return
         val dueAt = intent.getLongExtra(Alarms.EXTRA_DUE_AT, 0L)
-        val repeat = intent.getIntExtra(Alarms.EXTRA_REPEAT, 0)
+        val triggerAt = intent.getLongExtra(Alarms.EXTRA_TRIGGER_AT, 0L)
 
         val db = Db.get(ctx)
         val med = db.getMed(medId) ?: return
-        if (med.archived) return
-
-        // اگر در این فاصله ثبت شده، فقط آلارم نوبت بعدی را بگذار
-        if (dueAt != 0L && db.hasLogFor(medId, dueAt)) {
-            Alarms.rescheduleAll(ctx)
+        if (med.archived) {
+            Alarms.cancelAlarm(ctx, medId)
             return
         }
 
-        notify(ctx, med, dueAt)
+        val nowMs = System.currentTimeMillis()
+        val zone = ZoneId.systemDefault()
+        val now = Instant.ofEpochMilli(nowMs).atZone(zone)
 
-        // تکرار تا وقتی اسکن نشده
-        val prefs = Prefs.get(ctx)
-        if (repeat < prefs.maxRepeats) {
-            Alarms.scheduleAt(
-                ctx, medId, dueAt,
-                System.currentTimeMillis() + prefs.repeatMin * 60_000L,
-                repeat + 1
-            )
+        // فقط اگر این نوبت هنوز ثبت نشده و پنجره‌اش باز است، یادآوری کن
+        if (dueAt != 0L && db.logFor(medId, dueAt) == null) {
+            val prefs = Prefs.get(ctx)
+            val due = Instant.ofEpochMilli(dueAt).atZone(zone)
+            val slot = DoseLogic.slotFor(Schedule(med.scheduleJson), due, prefs.earlyWindowMin, prefs.lateWindowMin)
+            if (slot.contains(now) || now.isBefore(slot.start)) {
+                notify(ctx, med, due)
+            }
         }
+
+        // آلارم بعدی (تکرار همین نوبت یا نوبت بعدی). زمان را کمی جلو می‌بریم
+        // تا اگر آلارم چند ثانیه زودتر زده شد، همین آلارم دوباره تنظیم نشود.
+        val base = maxOf(nowMs, triggerAt) + 1_000
+        Alarms.rescheduleMed(ctx, med, Instant.ofEpochMilli(base).atZone(zone))
     }
 
-    private fun notify(ctx: Context, med: Med, dueAt: Long) {
-        val timeText = if (dueAt != 0L) {
-            DateTimeFormatter.ofPattern("HH:mm")
-                .format(Instant.ofEpochMilli(dueAt).atZone(ZoneId.systemDefault()))
-        } else ""
-
+    private fun notify(ctx: Context, med: Med, due: ZonedDateTime) {
+        val popupIntent = Intent(ctx, PopupActivity::class.java).apply {
+            action = PopupActivity.ACTION_REMINDER
+            putExtra(PopupActivity.EXTRA_MED_ID, med.id)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
         val open = PendingIntent.getActivity(
-            ctx, 0,
-            Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            ctx, Alarms.notificationId(med.id), popupIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val n = NotificationCompat.Builder(ctx, App.CHANNEL_ALARM)
             .setSmallIcon(R.drawable.ic_pill)
             .setContentTitle("وقت قرصه! " + med.name)
-            .setContentText("نوبت ساعت " + timeText + " — بعد از خوردن، گوشی را به جعبه بزن")
+            .setContentText("نوبت ساعت " + Fmt.time(due) + " — قرص رو بخور و گوشی رو به جعبه بزن")
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(
+                    "نوبت ساعت " + Fmt.time(due) + "\nقرص رو بخور و بعد گوشی رو به جعبه بزن تا ثبت بشه."
+                )
+            )
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
-            .setOngoing(false)
             .setContentIntent(open)
+            // صفحه را روشن می‌کند و پاپ‌آپ یادآوری (با پخش صدا) را باز می‌کند
+            .setFullScreenIntent(open, true)
             .build()
 
         try {
-            NotificationManagerCompat.from(ctx).notify(med.id.hashCode(), n)
+            NotificationManagerCompat.from(ctx).notify(Alarms.notificationId(med.id), n)
         } catch (e: SecurityException) {
             // مجوز نوتیفیکیشن داده نشده
         }

@@ -1,18 +1,27 @@
 package com.mediar.app.ui
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.view.Gravity
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import com.mediar.app.audio.AudioStore
 
 /** یک ردیف ضبط/پخش صدا که در تنظیمات و صفحه دارو استفاده می‌شود */
 object AudioRow {
 
+    /** همه ردیف‌های ساخته‌شده در صفحه فعلی — برای به‌روز کردن وضعیت دکمه‌ها */
+    private val refreshers = mutableListOf<() -> Unit>()
+
+    fun clear() = refreshers.clear()
+
     fun build(activity: Activity, medId: String?, type: String, label: String): LinearLayout {
+        val key = AudioStore.key(medId, type)
         val row = LinearLayout(activity)
         row.orientation = LinearLayout.VERTICAL
         row.setPadding(16, 16, 16, 16)
@@ -35,31 +44,49 @@ object AudioRow {
 
         fun refresh() {
             val has = AudioStore.has(activity, medId, type)
-            title.text = label + if (has) "  \u2705" else "  (ضبط نشده)"
-            title.setTextColor(if (has) Color.parseColor("#2E7D32") else Color.parseColor("#757575"))
-            btnRecord.text = if (AudioStore.isRecording()) "ضبط تموم" else "ضبط"
-            btnPlay.text = "پخش"
-            btnPlay.isEnabled = has
+            val recordingHere = AudioStore.recordingKey == key
+            title.text = label + when {
+                recordingHere -> "  🔴 در حال ضبط…"
+                has -> "  ✅"
+                else -> "  (ضبط نشده)"
+            }
+            title.setTextColor(
+                when {
+                    recordingHere -> Color.parseColor("#C62828")
+                    has -> Color.parseColor("#2E7D32")
+                    else -> Color.parseColor("#757575")
+                }
+            )
+            btnRecord.text = if (recordingHere) "⏹ تمام" else "🎙 ضبط"
+            btnPlay.text = "▶ پخش"
+            btnPlay.isEnabled = has && !recordingHere
             btnDelete.text = "حذف"
-            btnDelete.isEnabled = has
+            btnDelete.isEnabled = has && !recordingHere
         }
-
-        var recordingHere = false
+        refreshers.add(::refresh)
 
         btnRecord.setOnClickListener {
-            if (recordingHere) {
-                AudioStore.stopRecording()
-                recordingHere = false
-                Toast.makeText(activity, "ضبط شد \u2705", Toast.LENGTH_SHORT).show()
+            if (AudioStore.recordingKey == key) {
+                if (AudioStore.stopRecording()) {
+                    Toast.makeText(activity, "ضبط شد ✅", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(activity, "ضبط خیلی کوتاه بود یا ناموفق شد — دوباره امتحان کن", Toast.LENGTH_LONG).show()
+                }
             } else {
+                if (ContextCompat.checkSelfPermission(activity, Manifest.permission.RECORD_AUDIO) !=
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 2)
+                    Toast.makeText(activity, "اول اجازه میکروفون را بده و دوباره «ضبط» را بزن", Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
+                }
                 if (AudioStore.startRecording(activity, medId, type)) {
-                    recordingHere = true
-                    Toast.makeText(activity, "در حال ضبط… دوباره بزن تا تموم بشه", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(activity, "در حال ضبط… حرفت را بزن و بعد «تمام» را بزن", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(activity, "ضبط ممکن نشد — مجوز میکروفون را بررسی کن", Toast.LENGTH_LONG).show()
                 }
             }
-            refresh()
+            refreshers.forEach { it() }
         }
 
         btnPlay.setOnClickListener {
@@ -70,7 +97,7 @@ object AudioRow {
 
         btnDelete.setOnClickListener {
             AudioStore.delete(activity, medId, type)
-            refresh()
+            refreshers.forEach { it() }
         }
 
         refresh()

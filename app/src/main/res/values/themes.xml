@@ -1,6 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Mediar" parent="Theme.Material3.DayNight.NoActionBar">
+    <!-- تم روشن ثابت: رنگ‌های ثابت کارت‌ها در حالت تاریک هم خوانا بمانند -->
+    <style name="Theme.Mediar" parent="Theme.Material3.Light.NoActionBar">
         <item name="colorPrimary">#2E7D32</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:layoutDirection">rtl</item>
+        <item name="android:textDirection">anyRtl</item>
+    </style>
+
+    <!-- پاپ‌آپ اسکن تگ / یادآوری: روی صفحه فعلی با پس‌زمینه تیره‌شده -->
+    <style name="Theme.Mediar.Popup" parent="Theme.Material3.Light.Dialog">
+        <item name="colorPrimary">#2E7D32</item>
+        <item name="windowNoTitle">true</item>
+        <item name="windowActionBar">false</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.65</item>
+        <item name="android:windowCloseOnTouchOutside">false</item>
+        <item name="android:windowMinWidthMajor">94%</item>
+        <item name="android:windowMinWidthMinor">94%</item>
+        <item name="android:layoutDirection">rtl</item>
+        <item name="android:textDirection">anyRtl</item>
     </style>
 </resources>

@@ -88,7 +88,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="هر چند روز یک‌بار؟ (۲ = یک روز در میون، از امروز شروع می‌شود)"
+                android:text="هر چند روز یک‌بار؟ (۲ = یک روز در میون؛ شمارش از روز اولین ذخیره)"
                 android:textSize="14sp" />
 
             <EditText
@@ -115,7 +115,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="چند روز مصرف؟ (از امروز شروع می‌شود)"
+                android:text="چند روز مصرف؟ (دوره از روز اولین ذخیره شروع می‌شود)"
                 android:textSize="14sp" />
 
             <EditText

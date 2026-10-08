@@ -4,13 +4,16 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 
-/** بعد از روشن شدن گوشی یا آپدیت اپ، همه آلارم‌ها دوباره تنظیم می‌شوند */
+/** بعد از روشن شدن گوشی، آپدیت اپ یا تغییر ساعت/منطقه زمانی، همه آلارم‌ها دوباره تنظیم می‌شوند */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED ||
-            intent.action == Intent.ACTION_MY_PACKAGE_REPLACED
-        ) {
-            Alarms.rescheduleAll(ctx)
+        when (intent.action) {
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED,
+            "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" ->
+                try { Alarms.rescheduleAll(ctx) } catch (_: Exception) {}
         }
     }
 }

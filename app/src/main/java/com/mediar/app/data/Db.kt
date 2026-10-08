@@ -6,7 +6,12 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "mediar.db", null, 1) {
+class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, NAME, null, 1) {
+
+    init {
+        // بدون WAL: کل دیتا همیشه داخل یک فایل است و پشتیبان‌گیری/بازیابی سالم می‌ماند
+        setWriteAheadLoggingEnabled(false)
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -72,7 +77,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "mediar.db", 
     fun addStock(medId: String, delta: Double) {
         writableDatabase.execSQL(
             "UPDATE meds SET stock = MAX(0, stock + ?) WHERE id = ?",
-            arrayOf(delta.toString(), medId)
+            arrayOf<Any>(delta, medId)
         )
     }
 
@@ -123,6 +128,18 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "mediar.db", 
         ).use { c -> return if (c.moveToFirst()) logFrom(c) else null }
     }
 
+    fun getLog(id: String): DoseLog? {
+        readableDatabase.query("dose_logs", null, "id=?", arrayOf(id), null, null, null)
+            .use { c -> return if (c.moveToFirst()) logFrom(c) else null }
+    }
+
+    /** آخرین ثبت یک دارو (بر اساس زمان خوردن) */
+    fun lastLog(medId: String): DoseLog? {
+        readableDatabase.query(
+            "dose_logs", null, "med_id=?", arrayOf(medId), null, null, "taken_at DESC", "1"
+        ).use { c -> return if (c.moveToFirst()) logFrom(c) else null }
+    }
+
     fun logsBetween(fromMillis: Long, toMillis: Long): List<DoseLog> {
         val out = mutableListOf<DoseLog>()
         readableDatabase.query(
@@ -143,6 +160,7 @@ class Db private constructor(ctx: Context) : SQLiteOpenHelper(ctx, "mediar.db", 
     )
 
     companion object {
+        const val NAME = "mediar.db"
         @Volatile private var inst: Db? = null
         fun get(ctx: Context): Db =
             inst ?: synchronized(this) {

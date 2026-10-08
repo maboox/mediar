@@ -1,12 +1,13 @@
 package com.mediar.app.nfc
 
 /**
- * جلوگیری از پردازش چندباره یک تگ وقتی هنوز روی گوشی نگه داشته شده.
- * تا وقتی همان تگ پشت‌سرهم دیده شود، فقط بار اول پردازش می‌شود.
+ * جلوگیری از پردازش چندباره یک تگ وقتی هنوز روی گوشی نگه داشته شده
+ * یا لرزش دست باعث چند بار خوانده شدن پشت‌سرهم شده.
+ * زدن دوباره عمدی (بعد از چند ثانیه) پردازش می‌شود.
  */
 object ScanGate {
 
-    private const val WINDOW_MS = 10_000L
+    private const val WINDOW_MS = 4_000L
 
     private var lastId: String? = null
     private var lastAt: Long = 0L

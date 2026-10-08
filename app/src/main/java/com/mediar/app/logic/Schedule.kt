@@ -27,48 +27,72 @@ class Schedule(json: String) {
             try { list.add(LocalTime.parse(arr.getString(i))) } catch (_: Exception) {}
         }
         if (list.isEmpty()) list.add(LocalTime.of(8, 0))
-        list.sorted()
+        list.distinct().sorted()
     }
+
+    val every: Int = obj.optInt("every", 2).coerceAtLeast(1)
+    val on: Int = obj.optInt("on", 10).coerceAtLeast(1)
+    val off: Int = obj.optInt("off", 20).coerceAtLeast(0)
+
+    val days: Set<Int> = run {
+        val arr = obj.optJSONArray("days") ?: JSONArray()
+        val set = mutableSetOf<Int>()
+        for (i in 0 until arr.length()) set.add(arr.optInt(i))
+        set
+    }
+
+    /** تاریخ شروع (برای «هر N روز» و «دوره‌ای»)؛ null اگر ذخیره نشده باشد */
+    val anchor: LocalDate? =
+        try { LocalDate.parse(obj.optString("anchor")) } catch (e: Exception) { null }
 
     fun isDueOn(date: LocalDate): Boolean = when (type) {
         "daily" -> true
         "interval" -> {
-            val anchor = parseAnchor()
-            val every = obj.optInt("every", 2).coerceAtLeast(1)
-            !date.isBefore(anchor) && ChronoUnit.DAYS.between(anchor, date) % every == 0L
+            val a = anchor ?: date
+            !date.isBefore(a) && ChronoUnit.DAYS.between(a, date) % every == 0L
         }
-        "weekly" -> {
-            val days = obj.optJSONArray("days") ?: JSONArray()
-            var found = false
-            for (i in 0 until days.length()) {
-                if (days.optInt(i) == date.dayOfWeek.value) found = true
-            }
-            found
-        }
+        "weekly" -> days.contains(date.dayOfWeek.value)
         "cycle" -> {
-            val anchor = parseAnchor()
-            val on = obj.optInt("on", 10).coerceAtLeast(1)
-            val off = obj.optInt("off", 20).coerceAtLeast(0)
-            val d = ChronoUnit.DAYS.between(anchor, date)
+            val a = anchor ?: date
+            val d = ChronoUnit.DAYS.between(a, date)
             d >= 0 && (d % (on + off)) < on
         }
         else -> true
     }
 
-    private fun parseAnchor(): LocalDate =
-        try { LocalDate.parse(obj.optString("anchor")) } catch (e: Exception) { LocalDate.now() }
-
     /** همه نوبت‌های یک روز مشخص */
     fun dueTimesForDate(date: LocalDate, zone: ZoneId): List<ZonedDateTime> =
         if (isDueOn(date)) times.map { date.atTime(it).atZone(zone) } else emptyList()
 
-    /** اولین نوبت بعد از زمان داده‌شده (تا یک سال جلوتر جستجو می‌کند) */
+    /** همه نوبت‌ها در بازه روزهای [from, toInclusive]، مرتب */
+    fun dueTimesBetween(from: LocalDate, toInclusive: LocalDate, zone: ZoneId): List<ZonedDateTime> {
+        val out = mutableListOf<ZonedDateTime>()
+        var d = from
+        while (!d.isAfter(toInclusive)) {
+            out.addAll(dueTimesForDate(d, zone))
+            d = d.plusDays(1)
+        }
+        return out
+    }
+
+    /** اولین نوبت بعد از زمان داده‌شده (تا حدود یک سال جلوتر جستجو می‌کند) */
     fun nextDue(after: ZonedDateTime): ZonedDateTime? {
         var d = after.toLocalDate()
-        for (i in 0 until 370) {
+        for (i in 0 until 400) {
             val hit = dueTimesForDate(d, after.zone).firstOrNull { it.isAfter(after) }
             if (hit != null) return hit
             d = d.plusDays(1)
+        }
+        return null
+    }
+
+    /** آخرین نوبت قبل از زمان داده‌شده (تا حدود یک سال عقب‌تر) */
+    fun prevDue(before: ZonedDateTime): ZonedDateTime? {
+        var d = before.toLocalDate()
+        for (i in 0 until 400) {
+            val hit = dueTimesForDate(d, before.zone).lastOrNull { it.isBefore(before) }
+            if (hit != null) return hit
+            d = d.minusDays(1)
         }
         return null
     }
@@ -78,19 +102,13 @@ class Schedule(json: String) {
         val t = times.joinToString("، ") { String.format("%02d:%02d", it.hour, it.minute) }
         return when (type) {
             "daily" -> "هر روز ساعت $t"
-            "interval" -> "هر " + obj.optInt("every", 2) + " روز یک‌بار ساعت $t"
+            "interval" -> "هر $every روز یک‌بار ساعت $t"
             "weekly" -> {
-                val names = mapOf(
-                    1 to "دوشنبه", 2 to "سه‌شنبه", 3 to "چهارشنبه",
-                    4 to "پنج‌شنبه", 5 to "جمعه", 6 to "شنبه", 7 to "یک‌شنبه"
-                )
-                val days = obj.optJSONArray("days") ?: JSONArray()
-                val list = mutableListOf<String>()
-                for (i in 0 until days.length()) names[days.optInt(i)]?.let { list.add(it) }
-                "روزهای " + list.joinToString("، ") + " ساعت $t"
+                val order = listOf(6, 7, 1, 2, 3, 4, 5)
+                "روزهای " + order.filter { days.contains(it) }
+                    .joinToString("، ") { Fmt.dayNameIso(it) } + " ساعت $t"
             }
-            "cycle" -> obj.optInt("on", 10).toString() + " روز مصرف، " +
-                obj.optInt("off", 20) + " روز استراحت — ساعت $t"
+            "cycle" -> "$on روز مصرف، $off روز استراحت — ساعت $t"
             else -> t
         }
     }
@@ -103,15 +121,15 @@ class Schedule(json: String) {
             days: List<Int> = emptyList(),
             on: Int = 10,
             off: Int = 20,
-            anchor: String = LocalDate.now().toString()
+            anchor: LocalDate = LocalDate.now()
         ): String {
             val o = JSONObject()
             o.put("type", type)
-            o.put("times", JSONArray(times))
+            o.put("times", JSONArray(times.distinct().sorted()))
             when (type) {
-                "interval" -> { o.put("every", every); o.put("anchor", anchor) }
-                "weekly" -> o.put("days", JSONArray(days))
-                "cycle" -> { o.put("on", on); o.put("off", off); o.put("anchor", anchor) }
+                "interval" -> { o.put("every", every); o.put("anchor", anchor.toString()) }
+                "weekly" -> o.put("days", JSONArray(days.distinct().sorted()))
+                "cycle" -> { o.put("on", on); o.put("off", off); o.put("anchor", anchor.toString()) }
             }
             return o.toString()
         }

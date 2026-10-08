@@ -8,8 +8,11 @@ import android.os.Build
 import androidx.core.app.NotificationManagerCompat
 import com.mediar.app.data.Db
 import com.mediar.app.data.Med
+import com.mediar.app.data.Prefs
+import com.mediar.app.logic.AlarmPlan
+import com.mediar.app.logic.DoseLogic
 import com.mediar.app.logic.Schedule
-import java.time.LocalTime
+import com.mediar.app.ui.MainActivity
 import java.time.ZonedDateTime
 
 object Alarms {
@@ -17,58 +20,82 @@ object Alarms {
     const val EXTRA_MED_ID = "med_id"
     const val EXTRA_DUE_AT = "due_at"
     const val EXTRA_REPEAT = "repeat_count"
+    const val EXTRA_TRIGGER_AT = "trigger_at"
 
-    /** برای هر دارو، آلارم اولین نوبت ثبت‌نشده را تنظیم می‌کند */
+    /** برای همه داروها آلارم بعدی را تنظیم می‌کند */
     fun rescheduleAll(ctx: Context) {
+        for (med in Db.get(ctx).activeMeds()) rescheduleMed(ctx, med)
+    }
+
+    /** محاسبه زمان آلارم بعدی یک دارو */
+    fun plan(ctx: Context, med: Med, now: ZonedDateTime = ZonedDateTime.now()): AlarmPlan? {
         val db = Db.get(ctx)
-        val now = ZonedDateTime.now()
-        for (med in db.activeMeds()) {
-            val next = nextUnloggedDose(ctx, med, now)
-            if (next == null) {
-                cancelAlarm(ctx, med.id)
-                continue
-            }
-            val dueMillis = next.toInstant().toEpochMilli()
-            val triggerAt = maxOf(dueMillis, System.currentTimeMillis() + 5_000)
-            scheduleAt(ctx, med.id, dueMillis, triggerAt, 0)
+        val prefs = Prefs.get(ctx)
+        return DoseLogic.nextAlarm(
+            Schedule(med.scheduleJson), now,
+            prefs.earlyWindowMin, prefs.lateWindowMin,
+            prefs.repeatMin, prefs.maxRepeats
+        ) { due -> db.logFor(med.id, due) != null }
+    }
+
+    fun rescheduleMed(ctx: Context, med: Med, now: ZonedDateTime = ZonedDateTime.now()) {
+        if (med.archived) {
+            cancelAlarm(ctx, med.id)
+            return
         }
+        val p = plan(ctx, med, now)
+        if (p == null) {
+            cancelAlarm(ctx, med.id)
+            return
+        }
+        val trigger = maxOf(p.triggerAt.toInstant().toEpochMilli(), System.currentTimeMillis() + 3_000)
+        scheduleAt(ctx, med.id, p.slot.dueMillis, trigger, p.repeatIndex)
     }
 
-    /** اولین نوبت بدون ثبت — شامل نوبت‌های عقب‌افتاده امروز */
-    fun nextUnloggedDose(ctx: Context, med: Med, now: ZonedDateTime): ZonedDateTime? {
-        val db = Db.get(ctx)
-        val schedule = Schedule(med.scheduleJson)
-        val today = schedule.dueTimesForDate(now.toLocalDate(), now.zone)
-            .firstOrNull { !db.hasLogFor(med.id, it.toInstant().toEpochMilli()) }
-        if (today != null) return today
-        val endOfDay = now.toLocalDate().atTime(LocalTime.MAX).atZone(now.zone)
-        return schedule.nextDue(endOfDay)
-    }
-
-    fun scheduleAt(ctx: Context, medId: String, dueAt: Long, triggerAtMillis: Long, repeatCount: Int) {
+    fun canExact(ctx: Context): Boolean {
         val am = ctx.getSystemService(AlarmManager::class.java)
-        val pi = pending(ctx, medId, dueAt, repeatCount)
-        if (Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) {
+        return Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
+    }
+
+    private fun scheduleAt(ctx: Context, medId: String, dueAt: Long, triggerAtMillis: Long, repeatCount: Int) {
+        val am = ctx.getSystemService(AlarmManager::class.java)
+        val pi = pending(ctx, medId, dueAt, repeatCount, triggerAtMillis)
+        try {
+            if (canExact(ctx)) {
+                // setAlarmClock مطمئن‌ترین نوع آلارم است و در حالت Doze هم سر وقت زده می‌شود
+                val show = PendingIntent.getActivity(
+                    ctx, 1,
+                    Intent(ctx, MainActivity::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                am.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAtMillis, show), pi)
+            } else {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
+            }
+        } catch (e: SecurityException) {
             am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
-        } else {
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pi)
         }
     }
 
     fun cancelAlarm(ctx: Context, medId: String) {
         val am = ctx.getSystemService(AlarmManager::class.java)
-        am.cancel(pending(ctx, medId, 0L, 0))
+        am.cancel(pending(ctx, medId, 0L, 0, 0L))
     }
+
+    fun notificationId(medId: String): Int = medId.hashCode()
 
     fun cancelNotification(ctx: Context, medId: String) {
-        NotificationManagerCompat.from(ctx).cancel(medId.hashCode())
+        NotificationManagerCompat.from(ctx).cancel(notificationId(medId))
     }
 
-    private fun pending(ctx: Context, medId: String, dueAt: Long, repeatCount: Int): PendingIntent {
+    private fun pending(ctx: Context, medId: String, dueAt: Long, repeatCount: Int, triggerAt: Long): PendingIntent {
         val i = Intent(ctx, AlarmReceiver::class.java).apply {
+            // action یکتا برای هر دارو تا PendingIntentها با هم قاطی نشوند
+            action = "com.mediar.app.ALARM." + medId
             putExtra(EXTRA_MED_ID, medId)
             putExtra(EXTRA_DUE_AT, dueAt)
             putExtra(EXTRA_REPEAT, repeatCount)
+            putExtra(EXTRA_TRIGGER_AT, triggerAt)
         }
         return PendingIntent.getBroadcast(
             ctx,

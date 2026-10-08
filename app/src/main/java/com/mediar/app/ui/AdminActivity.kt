@@ -3,6 +3,7 @@ package com.mediar.app.ui
 import android.Manifest
 import android.app.AlarmManager
 import android.app.AlertDialog
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -19,18 +20,22 @@ import android.os.Vibrator
 import android.provider.Settings
 import android.view.View
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.mediar.app.R
 import com.mediar.app.alarm.Alarms
 import com.mediar.app.audio.AudioStore
+import com.mediar.app.audio.Speaker
 import com.mediar.app.backup.Backup
 import com.mediar.app.data.Db
 import com.mediar.app.data.Prefs
+import com.mediar.app.logic.Fmt
 import com.mediar.app.logic.Schedule
 import com.mediar.app.nfc.NfcUtil
 import kotlin.system.exitProcess
@@ -78,22 +83,93 @@ class AdminActivity : AppCompatActivity() {
         val prefs = Prefs.get(this)
         val earlyInput = findViewById<EditText>(R.id.inputEarlyWindow)
         val repeatInput = findViewById<EditText>(R.id.inputRepeatMin)
+        val lateInput = findViewById<EditText>(R.id.inputLateWindow)
+        val singleTap = findViewById<CheckBox>(R.id.checkSingleTap)
         earlyInput.setText(prefs.earlyWindowMin.toString())
         repeatInput.setText(prefs.repeatMin.toString())
+        lateInput.setText(prefs.lateWindowMin.toString())
+        singleTap.isChecked = prefs.singleTap
         findViewById<Button>(R.id.btnSaveSettings).setOnClickListener {
             prefs.earlyWindowMin = earlyInput.text.toString().toLongOrNull()?.coerceIn(0, 720) ?: 120L
             prefs.repeatMin = repeatInput.text.toString().toLongOrNull()?.coerceIn(1, 120) ?: 10L
+            prefs.lateWindowMin = lateInput.text.toString().toLongOrNull()?.coerceIn(30, 1440) ?: 360L
+            prefs.singleTap = singleTap.isChecked
+            earlyInput.setText(prefs.earlyWindowMin.toString())
+            repeatInput.setText(prefs.repeatMin.toString())
+            lateInput.setText(prefs.lateWindowMin.toString())
             Alarms.rescheduleAll(this)
             Toast.makeText(this, "ذخیره شد", Toast.LENGTH_SHORT).show()
+        }
+        findViewById<Button>(R.id.btnFullScreen).setOnClickListener { requestFullScreen() }
+        findViewById<Button>(R.id.btnNotifSettings).setOnClickListener {
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                )
+            } catch (_: Exception) {}
+        }
+        findViewById<Button>(R.id.btnTestVoice).setOnClickListener {
+            Speaker.say(this, null, "test", "سلام. این یک آزمایش است. الان وقت خوردن قرص است.")
+            handlerPost(2500) { refreshStatus() }
         }
 
         buildGenericAudioRows()
         maybeRequestRecordPermission()
+        Speaker.warmUp(this)
     }
 
     override fun onResume() {
         super.onResume()
         refreshMeds()
+        refreshStatus()
+        handlerPost(1500) { refreshStatus() }
+    }
+
+    private fun handlerPost(ms: Long, block: () -> Unit) {
+        window.decorView.postDelayed({ if (!isFinishing) block() }, ms)
+    }
+
+    /** وضعیت تنظیمات حیاتی برای کار خودکار اپ */
+    private fun refreshStatus() {
+        val ok = "✅"
+        val bad = "❌"
+        val sb = StringBuilder("وضعیت:\n")
+        val nfc = NfcAdapter.getDefaultAdapter(this)
+        sb.append(if (nfc != null && nfc.isEnabled) ok else bad).append(" NFC روشن\n")
+        val notifOk = NotificationManagerCompat.from(this).areNotificationsEnabled()
+        sb.append(if (notifOk) ok else bad).append(" اجازه اعلان\n")
+        sb.append(if (Alarms.canExact(this)) ok else bad).append(" آلارم دقیق\n")
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        sb.append(if (pm.isIgnoringBatteryOptimizations(packageName)) ok else bad).append(" خارج از بهینه‌سازی باتری\n")
+        if (Build.VERSION.SDK_INT >= 34) {
+            val nm = getSystemService(NotificationManager::class.java)
+            sb.append(if (nm.canUseFullScreenIntent()) ok else bad).append(" نمایش یادآوری روی صفحه قفل\n")
+        }
+        when (Speaker.persianAvailable()) {
+            true -> sb.append(ok).append(" گوینده فارسی گوشی (برای پیام‌هایی که ضبط نشده‌اند)")
+            false -> sb.append("⚠️ گوشی گوینده فارسی ندارد — برای پیام‌ها حتما صدا ضبط کن (وگرنه فقط بوق می‌زند)")
+            null -> sb.append("… در حال بررسی گوینده فارسی")
+        }
+        findViewById<TextView>(R.id.statusText).text = sb.toString()
+    }
+
+    private fun requestFullScreen() {
+        if (Build.VERSION.SDK_INT >= 34) {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (nm.canUseFullScreenIntent()) {
+                Toast.makeText(this, "قبلا فعال شده ✅", Toast.LENGTH_SHORT).show()
+                return
+            }
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT)
+                        .setData(Uri.parse("package:$packageName"))
+                )
+            } catch (_: Exception) {}
+        } else {
+            Toast.makeText(this, "در این نسخه اندروید نیازی نیست ✅", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onPause() {
@@ -146,7 +222,7 @@ class AdminActivity : AppCompatActivity() {
             val tv = TextView(this)
             val voiceOk = AudioStore.has(this, med.id, AudioStore.TYPE_DUE)
             tv.text = med.name + "\n" + Schedule(med.scheduleJson).describe() +
-                "\nموجودی: " + trim(med.stock) +
+                "\nموجودی: " + Fmt.num(med.stock) +
                 (if (voiceOk) "  \uD83C\uDFA4" else "  (بدون صدا)")
             tv.textSize = 17f
             tv.setPadding(28, 28, 28, 28)
@@ -167,15 +243,14 @@ class AdminActivity : AppCompatActivity() {
         }
     }
 
-    private fun trim(d: Double): String =
-        if (d == d.toLong().toDouble()) d.toLong().toString() else d.toString()
-
     // ---------- صداهای عمومی ----------
 
     private fun buildGenericAudioRows() {
         audioContainer.removeAllViews()
+        AudioRow.clear()
         val items = listOf(
             AudioStore.TYPE_DUE to "پیام عمومی «الان وقتشه بخوری»",
+            AudioStore.TYPE_LOGGED to "پیام عمومی «ثبت شد، نوش جان»",
             AudioStore.TYPE_TAKEN to "پیام عمومی «این رو خوردی، دیگه نخور»",
             AudioStore.TYPE_EARLY to "پیام عمومی «هنوز زوده»",
             AudioStore.TYPE_NOT_TODAY to "پیام عمومی «امروز نوبتش نیست»",
@@ -244,7 +319,7 @@ class AdminActivity : AppCompatActivity() {
             writing = true
         }
         Thread {
-            val err = NfcUtil.writeTag(tag, NfcUtil.REPORT_ID)
+            val err = NfcUtil.writeTag(tag, NfcUtil.REPORT_ID, packageName)
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (err == null) {
